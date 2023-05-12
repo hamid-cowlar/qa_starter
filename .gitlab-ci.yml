@@ -1,0 +1,84 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - lint
+  - test
+
+linting:
+  image: node:16
+  stage: lint
+  cache:
+    paths:
+      - node_modules/
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]\.[0-9]\.[0-9](-([a-zA-Z0-9])*)?$/
+  script:
+    - npm ci --progress=false
+    - npm run lint
+
+smoke-test:
+  image: cypress/browsers:latest
+  stage: test
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    APP_TITLE: viaphoton-gitlab
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'pipeline'
+  script:
+    - cp $CYPRESS_ENV_JSON_DEV cypress.env.json
+    - cp $CYPRESS_ENV_DEV .env
+    - export PIPELINE_EXECUTED=pipeline
+    - npm ci --progress=false
+    - npm run cy:run:smoke
+  artifacts:
+    when: always
+    paths:
+      - cypress/videos/**/*.mp4
+      - cypress/screenshots/**/*.png
+    expire_in: 1 day
+
+nightly-test:
+  image: cypress/browsers:latest
+  stage: test
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    APP_TITLE: viaphoton-gitlab
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'schedule' && $RUN_SCHEDULED_NIGHTLY_TEST == 'true'
+  script:
+    - cp $CYPRESS_ENV_JSON_STAGE cypress.env.json
+    - cp $CYPRESS_ENV_STAGE .env
+    - export PIPELINE_EXECUTED=nightly_test
+    - export E2E_COUNT=$(cd cypress/e2e && ls | wc -l)
+    - npm ci --progress=false --cache .npm --prefer-offline
+    - npm run cy:run:all
+  artifacts:
+    when: always
+    paths:
+      - cypress/videos/**/*.mp4
+      - cypress/screenshots/**/*.png
+    expire_in: 1 day
+
+regression-test:
+  image: cypress/browsers:latest
+  stage: test
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    APP_TITLE: viaphoton-gitlab
+  only:
+    - pipelines
+  script:
+    - cp $CYPRESS_ENV_JSON_STAGE cypress.env.json
+    - cp $CYPRESS_ENV_STAGE .env
+    - export PIPELINE_EXECUTED=pipeline
+    - npm ci --progress=false
+    - npm run cy:run:all
+  artifacts:
+    when: always
+    paths:
+      - cypress/videos/**/*.mp4
+      - cypress/screenshots/**/*.png
+    expire_in: 1 day

@@ -1,0 +1,3 @@
+[submodule "viaphoton-commons"]
+	path = viaphoton-commons
+	url = ../viaphoton-commons.git

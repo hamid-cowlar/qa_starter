@@ -1,0 +1,20 @@
+node_modules
+cypress/screenshots
+cypress/downloads
+cypress/videos
+results
+cypress.env.json
+node_modules
+.env
+docker-compose/*.env
+
+# Coverage directory l
+coverage
+docker-compose/backups/*
+docker-compose/backup_*
+backend_assets
+test-results-all.xml
+docker-compose/*.env
+
+# Testing only
+useful-tools/bd/bulk-testing.json

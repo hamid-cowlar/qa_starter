@@ -1,0 +1,121 @@
+version: "3.7"
+
+services:
+  mysqldb:
+    image: dcarbdev.azurecr.io/mysql:latest
+    container_name: dcarb-app-db
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password --sql_mode=""
+    ports:
+      - "${DB_PORT}:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_DATABASE}
+    volumes:
+      - my-db:/var/lib/mysql
+      - ./backup-mysql:/var/backup
+
+  backend:
+    container_name: node-backend
+    image: dcarbdev.azurecr.io/dcarb-backend:latest
+    restart: always
+    ports:
+      - "${API_PORT}:${API_PORT}"
+    depends_on:
+      - mysqldb
+      - vernemq
+      - influxdb2
+    env_file:
+      - ./backend.env
+    environment:
+      - PORT=${API_PORT}
+      - DB_HOST=mysqldb
+      - DB_PORT=${DB_PORT}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_DATABASE=${DB_DATABASE}
+      - INFLUX_DB_HOST=influxdb2
+      - INFLUX_DB_PORT=8086
+      - INFLUX_DB_USERNAME=${DOCKER_INFLUXDB2_INIT_USERNAME}
+      - INFLUX_DB_PASSWORD=${DOCKER_INFLUXDB2_INIT_PASSWORD}
+      - INFLUX_DB_ORG=${DOCKER_INFLUXDB2_INIT_ORG}
+      - INFLUX_DB_NAME=${DOCKER_INFLUXDB2_INIT_BUCKET}
+      - INFLUX_DB_TOKEN=${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
+
+    links:
+      - vernemq
+      - influxdb2
+  adminer:
+    image: adminer:4.8.1
+    container_name: dcarb-adminer-db
+    restart: always
+    ports:
+      - ${ADMINER_HOST_PORT}:8080
+  vernemq:
+    container_name: dcarb-vernemq
+    image: vernemq/vernemq
+    ports:
+      - "${VERNE_WS_PORT}:8080"
+      - "${VERNE_MQTT_PORT}:1883"
+      - "${VERNE_ADMIN_PORT}:8888"
+    environment:
+      - DOCKER_VERNEMQ_ACCEPT_EULA=yes
+      - DOCKER_VERNEMQ_ALLOW_ANONYMOUS=on
+      - DOCKER_VERNEMQ_VMQ_PASSWD.password_file=/vernemq/etc/vmq.passwd
+      - DOCKER_VERNEMQ_LISTENER.tcp.allowed_protocol_versions=3,4,5
+      - DOCKER_VERNEMQ_LISTENER.ws.allowed_protocol_versions=3,4,5
+      - DOCKER_VERNEMQ_LISTENER.wss.allowed_protocol_versions=3,4,5
+    volumes:
+      - ./vernemq/docker-entrypoint.sh:/docker-entrypoint.sh
+      - ./vernemq/passwd:/vernemq/etc/passwd
+  influxdb2:
+    container_name: dcarb-influxdb2.docker
+    image: influxdb:2.6-alpine
+    ports:
+      - "${INFLUXDB_PORT}:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB2_INIT_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB2_INIT_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB2_INIT_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB2_INIT_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${DOCKER_INFLUXDB_INIT_ADMIN_TOKEN}
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+    volumes:
+      - influxdb2-vol:/var/lib/influxdb2
+      - influxdb2-config-vol:/etc/influxdb2
+      - ./data/iotcore/:/usr/backups/
+  chronograf:
+    container_name: dcarb-chronograf-monit
+    image: chronograf:1.9.1-alpine
+    entrypoint: "chronograf --influxdb-url=http://influxdb2:${INFLUXDB_PORT}"
+    depends_on:
+      - influxdb2
+    ports:
+      - "${CHRONOGRAF_PORT}:8888"
+    volumes:
+      - chronograf-vol:/var/lib/chronograf
+  telegraf:
+    container_name: dcarb-telegraf
+    image: telegraf:1.24
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+    environment:
+      - INFLUX_TOKEN=${INFLUX_TOKEN_TELEGRAF}
+    links:
+      - influxdb2
+  apps:
+    container_name: apps
+    image: registry.gitlab.com/cowlar/viaphoton/viaphoton-dev-ops/viaphoton-dashboard:v1.5.6
+    restart: always
+    ports:
+      - "${ADMIN_PORT}:${ADMIN_PORT}"
+      - "${APP_PORT}:${APP_PORT}"
+    env_file:
+      - .env
+volumes:
+  my-db:
+  chronograf-vol:
+  influxdb2-vol:
+  influxdb2-config-vol:
